@@ -61,17 +61,17 @@ AasthaSathi:
 AasthaSathi/
 ├── README.md
 ├── docs/
-│ ├── architecture_diagram.png
-│ ├── prompt_templates.md
-│ └── demo_queries.md
+│ ├── architecture\_diagram.png
+│ ├── prompt\_templates.md
+│ └── demo\_queries.md
 ├── ingestion/
-│ ├── website_loader.py
-│ ├── pdf_loader.py
-│ └── chunk_and_embed.py
-├── api_tool/
-│ └── myaastha_api_wrapper.py
+│ ├── website\_loader.py
+│ ├── pdf\_loader.py
+│ └── chunk\_and\_embed.py
+├── api\_tool/
+│ └── myaastha\_api\_wrapper.py
 ├── agent/
-│ ├── aasthasathi_agent.py
+│ ├── aasthasathi\_agent.py
 │ └── retriever.py
 ├── app/
 │ ├── backend/ (FastAPI)
@@ -81,8 +81,7 @@ AasthaSathi/
 │ └── embeddings/
 ├── tests/
 └── examples/
-└── sample_queries.md
-
+└── sample\_queries.md
 
 ---
 
