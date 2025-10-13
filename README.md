@@ -1,6 +1,6 @@
 # 🤖 AasthaSathi – Your Trusted AI Companion for Cooperative Banking
 
-![AasthaSathi Banner](https://via.placeholder.com/1200x300.png?text=AasthaSathi+-+Your+Trusted+AI+Companion)
+![AasthaSathi Banner](http://myaastha.in/wp-content/uploads/2021/06/slider1.jpg)
 
 > **AasthaSathi** is an AI-powered assistant developed for **Aastha Co-operative Credit Society**, designed to help employees and agents instantly access scheme information, policy guidelines, and live member account data — all through natural language queries.
 
@@ -56,34 +56,6 @@ AasthaSathi:
 
 ---
 
-## 📂 Repository Structure
-
-AasthaSathi/
-├── README.md
-├── docs/
-│ ├── architecture\_diagram.png
-│ ├── prompt\_templates.md
-│ └── demo\_queries.md
-├── ingestion/
-│ ├── website\_loader.py
-│ ├── pdf\_loader.py
-│ └── chunk\_and\_embed.py
-├── api\_tool/
-│ └── myaastha\_api\_wrapper.py
-├── agent/
-│ ├── aasthasathi\_agent.py
-│ └── retriever.py
-├── app/
-│ ├── backend/ (FastAPI)
-│ └── frontend/ (Streamlit or Gradio)
-├── data/
-│ ├── manuals/
-│ └── embeddings/
-├── tests/
-└── examples/
-└── sample\_queries.md
-
----
 
 ## 🚀 Getting Started
 
