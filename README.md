@@ -45,14 +45,14 @@ AasthaSathi:
 
 | Layer | Technology |
 |-------|-------------|
-| **LLM & Framework** | LangChain, LangGraph, CrewAI |
-| **Vector Store** | ChromaDB / Pinecone |
+| **LLM & Framework** | LangChain, LangGraph |
+| **Vector Store** | ChromaDB |
 | **Embeddings** | OpenAI / Gemini Embeddings |
 | **LLM Reasoning** | Gemini Pro / GPT-4 |
 | **API Tools (MCP)** | FastAPI wrapper for REST endpoints |
 | **Frontend (Demo)** | Gradio / Streamlit |
 | **Auth & Security** | JWT, Role-based Access, HTTPS |
-| **Deployment** | Docker, Render / Railway / DigitalOcean |
+| **Deployment** | Docker, DigitalOcean |
 
 ---
 
@@ -61,14 +61,14 @@ AasthaSathi:
 
 ### 1️⃣ Clone the Repository
 ```bash
-git clone https://github.com/<your-username>/AasthaSathi.git
+git clone https://github.com/arghads9177/AasthaSathi.git
 cd AasthaSathi
 ```
 
 ### Create Virtual Environment
 ```bash
 uv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 ```
 ### Install Dependencies
 ```bash

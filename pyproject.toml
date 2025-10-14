@@ -1,0 +1,30 @@
+[project]
+name = "aasthasathi"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.13.0",
+    "beautifulsoup4>=4.14.2",
+    "chromadb>=1.1.1",
+    "fastapi>=0.119.0",
+    "gradio>=5.49.1",
+    "httpx>=0.28.1",
+    "langchain>=0.3.27",
+    "langchain-chroma>=0.2.6",
+    "langchain-openai>=0.3.35",
+    "langgraph>=0.6.10",
+    "lxml>=6.0.2",
+    "openai>=2.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic>=2.11.10",
+    "pydantic-settings>=2.11.0",
+    "pymupdf>=1.26.5",
+    "python-dotenv>=1.1.1",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.20",
+    "requests>=2.32.5",
+    "uvicorn>=0.37.0",
+]
