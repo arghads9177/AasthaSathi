@@ -7,15 +7,27 @@ into the vector database.
 
 import asyncio
 import logging
+import sys
 from typing import List, Dict, Optional
 from pathlib import Path
 import time
 
-from ..core.config import get_settings
-from ..core.models import Document, DocumentSource
-from .website_scraper import scrape_website
-from .pdf_processor import process_pdf_directory, process_pdf_file
-from .vector_database import DocumentIndexer, VectorDatabase
+# Handle imports for both direct execution and module import
+def setup_imports():
+    """Setup imports to work with both direct execution and module import."""
+    current_dir = Path(__file__).parent
+    project_root = current_dir.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+# Always setup imports first
+setup_imports()
+
+from aasthasathi.core.config import get_settings
+from aasthasathi.core.models import Document, DocumentSource
+from aasthasathi.ingestion.website_scraper import scrape_website
+from aasthasathi.ingestion.pdf_processor import process_pdf_directory, process_pdf_file
+from aasthasathi.ingestion.vector_database import DocumentIndexer, VectorDatabase
 
 
 logger = logging.getLogger(__name__)
@@ -227,7 +239,7 @@ def test_ingestion_pipeline():
         if results['success']:
             vector_db = VectorDatabase()
             search_results = vector_db.search_documents(
-                "fixed deposit interest rate",
+                "Tell me about Aastha Co-operative Credit Society",
                 n_results=3
             )
             

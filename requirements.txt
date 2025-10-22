@@ -20,3 +20,4 @@ python-multipart
 aiofiles
 httpx
 aiohttp
+PyMuPDF

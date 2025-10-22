@@ -5,7 +5,14 @@ Handles PDF document loading, text extraction, and chunking
 for policy manuals and procedural documents.
 """
 
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+except Exception as e:
+    raise ImportError(
+        "PyMuPDF (fitz) is required to run the PDF processor.\n"
+        "Install it with: pip install PyMuPDF\n"
+        f"Original error: {e}"
+    )
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import logging
@@ -385,25 +392,29 @@ def process_pdf_directory(directory_path: str, document_type: str = "manual") ->
 
 
 if __name__ == "__main__":
-    # Test the PDF processor
-    import sys
-    
-    if len(sys.argv) > 1:
-        pdf_path = sys.argv[1]
-        
-        if Path(pdf_path).is_file():
-            documents = process_pdf_file(pdf_path)
-        elif Path(pdf_path).is_dir():
-            documents = process_pdf_directory(pdf_path)
-        else:
-            print(f"Invalid path: {pdf_path}")
-            sys.exit(1)
-        
-        print(f"Processed {len(documents)} documents")
-        
-        for doc in documents[:3]:
-            print(f"\nTitle: {doc.title}")
-            print(f"Source: {doc.source}")
-            print(f"Content preview: {doc.content[:200]}...")
+    # Test the PDF processor by using the project's data/raw/User Manual.pdf
+    logging.basicConfig(level=logging.INFO)
+    project_root = Path(__file__).resolve().parents[2]
+    default_pdf = project_root / "data" / "raw" / "User Manual.pdf"
+
+    documents = []
+
+    if default_pdf.is_file():
+        print(f"🔎 Found default PDF at: {default_pdf}")
+        documents = process_pdf_file(str(default_pdf))
     else:
-        print("Usage: python pdf_processor.py <pdf_file_or_directory>")
+        # Fallback: process all PDFs in data/raw if the specific file isn't present
+        raw_dir = project_root / "data" / "raw"
+        if raw_dir.exists() and any(raw_dir.glob("*.pdf")):
+            print(f"⚠️ Specific file not found, processing all PDFs in: {raw_dir}")
+            documents = process_pdf_directory(str(raw_dir))
+        else:
+            print(f"❌ No PDF found at {default_pdf} and no PDFs in {raw_dir}")
+            print("Please add 'User Manual.pdf' to data/raw or provide a PDF path.")
+            sys.exit(1)
+
+    print(f"Processed {len(documents)} documents")
+    for doc in documents[:5]:
+        print(f"\nTitle: {doc.title}")
+        print(f"Source: {doc.source}")
+        print(f"Content preview: {doc.content[:200]}...")

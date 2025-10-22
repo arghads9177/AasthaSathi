@@ -13,10 +13,22 @@ import numpy as np
 from pathlib import Path
 import hashlib
 import json
+import sys
 from datetime import datetime
+# Handle imports for both direct execution and module import
+def setup_imports():
+    """Setup imports to work with both direct execution and module import."""
+    current_dir = Path(__file__).parent
+    project_root = current_dir.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
-from ..core.config import get_settings
-from ..core.models import Document, DocumentChunk, DocumentSource
+# Always setup imports first
+setup_imports()
+
+# Now import with absolute imports
+from aasthasathi.core.config import get_settings
+from aasthasathi.core.models import Document, DocumentChunk, DocumentSource
 
 
 logger = logging.getLogger(__name__)
@@ -54,8 +66,9 @@ class VectorDatabase:
                 name=self.settings.chroma_collection_name
             )
             logger.info(f"Connected to existing collection: {self.settings.chroma_collection_name}")
-        except ValueError:
-            # Collection doesn't exist, create it
+        except Exception as e:
+            # If collection doesn't exist or another Chroma error occurred, create it
+            logger.warning(f"Could not get collection '{self.settings.chroma_collection_name}': {e}. Creating a new collection.")
             self.collection = self.client.create_collection(
                 name=self.settings.chroma_collection_name,
                 metadata={"description": "AasthaSathi knowledge base"}
@@ -64,115 +77,150 @@ class VectorDatabase:
         
         # Initialize embedding model
         try:
-            from ..llm.embeddings import get_embedding_model
-            self.embedding_model = get_embedding_model()
-            logger.info(f"Initialized embedding model: {self.settings.embedding_provider}")
+            # Use absolute import to work when this module is executed as a script
+            from aasthasathi.llm.embeddings import get_embedding_model
+            try:
+                self.embedding_model = get_embedding_model()
+                logger.info(f"Initialized embedding model: {self.settings.embedding_provider}")
+            except Exception as inner_e:
+                logger.warning(f"Embedding model initialization failed: {inner_e}")
+                self.embedding_model = None
         except Exception as e:
-            logger.warning(f"Could not initialize embedding model: {e}")
+            logger.warning(f"Could not import embedding provider: {e}")
             self.embedding_model = None
     
     def add_documents(self, documents: List[Document]) -> bool:
         """Add documents to the vector database."""
-        
+        logger.info(f"Adding {len(documents)} documents to vector database")
+
+        # Helper to prepare data
+        ids = []
+        documents_text = []
+        metadatas = []
+
+        for doc in documents:
+            ids.append(doc.doc_id)
+            documents_text.append(doc.content)
+
+            # Prepare metadata (ChromaDB only accepts certain types)
+            metadata = {
+                "title": doc.title,
+                "source": doc.source.value,
+                "doc_id": doc.doc_id,
+                "content_length": len(doc.content),
+                "word_count": len(doc.content.split())
+            }
+
+            # Add optional fields
+            if doc.url:
+                metadata["url"] = doc.url
+            if doc.page_number:
+                metadata["page_number"] = doc.page_number
+            if doc.section:
+                metadata["section"] = doc.section
+
+            # Add custom metadata
+            for key, value in doc.metadata.items():
+                if isinstance(value, (str, int, float, bool)):
+                    metadata[key] = value
+                else:
+                    # Convert complex types to string
+                    metadata[key] = str(value)
+
+            metadatas.append(metadata)
+
+        # Try adding; if collection missing, recreate once and retry
         try:
-            logger.info(f"Adding {len(documents)} documents to vector database")
-            
-            # Prepare data for ChromaDB
-            ids = []
-            documents_text = []
-            metadatas = []
-            
-            for doc in documents:
-                ids.append(doc.doc_id)
-                documents_text.append(doc.content)
-                
-                # Prepare metadata (ChromaDB only accepts certain types)
-                metadata = {
-                    "title": doc.title,
-                    "source": doc.source.value,
-                    "doc_id": doc.doc_id,
-                    "content_length": len(doc.content),
-                    "word_count": len(doc.content.split())
-                }
-                
-                # Add optional fields
-                if doc.url:
-                    metadata["url"] = doc.url
-                if doc.page_number:
-                    metadata["page_number"] = doc.page_number
-                if doc.section:
-                    metadata["section"] = doc.section
-                
-                # Add custom metadata
-                for key, value in doc.metadata.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        metadata[key] = value
-                    else:
-                        # Convert complex types to string
-                        metadata[key] = str(value)
-                
-                metadatas.append(metadata)
-            
-            # Add to ChromaDB
-            self.collection.add(
-                ids=ids,
-                documents=documents_text,
-                metadatas=metadatas
-            )
-            
+            self.collection.add(ids=ids, documents=documents_text, metadatas=metadatas)
             logger.info(f"Successfully added {len(documents)} documents")
             return True
-            
         except Exception as e:
             logger.error(f"Error adding documents to vector database: {e}")
-            return False
+            try:
+                logger.info("Attempting to recreate collection and retry add_documents")
+                # Recreate collection
+                self.client.delete_collection(self.settings.chroma_collection_name)
+            except Exception:
+                pass
+            try:
+                self.collection = self.client.create_collection(
+                    name=self.settings.chroma_collection_name,
+                    metadata={"description": "AasthaSathi knowledge base"}
+                )
+                self.collection.add(ids=ids, documents=documents_text, metadatas=metadatas)
+                logger.info(f"Successfully added {len(documents)} documents after recreating collection")
+                return True
+            except Exception as e2:
+                logger.error(f"Retry failed adding documents: {e2}")
+                return False
     
     def add_chunks(self, chunks: List[DocumentChunk]) -> bool:
         """Add document chunks to the vector database."""
-        
+        logger.info(f"Adding {len(chunks)} chunks to vector database")
+
+        ids = []
+        documents_text = []
+        metadatas = []
+
+        for chunk in chunks:
+            ids.append(chunk.chunk_id)
+            documents_text.append(chunk.content)
+
+            # Prepare metadata
+            metadata = {
+                "chunk_id": chunk.chunk_id,
+                "doc_id": chunk.doc_id,
+                "chunk_index": chunk.chunk_index,
+                "content_length": len(chunk.content),
+                "word_count": len(chunk.content.split())
+            }
+
+            # Add chunk metadata
+            for key, value in chunk.metadata.items():
+                if isinstance(value, (str, int, float, bool)):
+                    metadata[key] = value
+                else:
+                    metadata[key] = str(value)
+
+            # Normalize and ensure a top-level `source` field exists so
+            # get_collection_stats() can compute distribution correctly.
+            if 'source' not in metadata:
+                # Heuristic: doc_id prefixes like 'pdf_' or 'web_' are used
+                # by the pipeline. Fall back to detecting common PDF keys.
+                doc_id_lower = str(chunk.doc_id).lower() if chunk.doc_id else ''
+                if doc_id_lower.startswith('pdf_') or metadata.get('file_name') or metadata.get('file_path'):
+                    metadata['source'] = 'pdf_manual'
+                elif doc_id_lower.startswith('web_') or metadata.get('url') or metadata.get('content_type'):
+                    metadata['source'] = 'website'
+                else:
+                    metadata['source'] = 'unknown'
+
+            metadatas.append(metadata)
+
+        # Try adding; if collection missing, recreate once and retry
         try:
-            logger.info(f"Adding {len(chunks)} chunks to vector database")
-            
-            # Prepare data for ChromaDB
-            ids = []
-            documents_text = []
-            metadatas = []
-            
-            for chunk in chunks:
-                ids.append(chunk.chunk_id)
-                documents_text.append(chunk.content)
-                
-                # Prepare metadata
-                metadata = {
-                    "chunk_id": chunk.chunk_id,
-                    "doc_id": chunk.doc_id,
-                    "chunk_index": chunk.chunk_index,
-                    "content_length": len(chunk.content),
-                    "word_count": len(chunk.content.split())
-                }
-                
-                # Add chunk metadata
-                for key, value in chunk.metadata.items():
-                    if isinstance(value, (str, int, float, bool)):
-                        metadata[key] = value
-                    else:
-                        metadata[key] = str(value)
-                
-                metadatas.append(metadata)
-            
-            # Add to ChromaDB
-            self.collection.add(
-                ids=ids,
-                documents=documents_text,
-                metadatas=metadatas
-            )
-            
+            self.collection.add(ids=ids, documents=documents_text, metadatas=metadatas)
             logger.info(f"Successfully added {len(chunks)} chunks")
             return True
-            
         except Exception as e:
             logger.error(f"Error adding chunks to vector database: {e}")
-            return False
+            try:
+                logger.info("Attempting to recreate collection and retry add_chunks")
+                # Recreate collection
+                self.client.delete_collection(self.settings.chroma_collection_name)
+            except Exception:
+                pass
+            try:
+                self.collection = self.client.create_collection(
+                    name=self.settings.chroma_collection_name,
+                    metadata={"description": "AasthaSathi knowledge base"}
+                )
+                self.collection.add(ids=ids, documents=documents_text, metadatas=metadatas)
+                logger.info(f"Successfully added {len(chunks)} chunks after recreating collection")
+                return True
+            except Exception as e2:
+                logger.error(f"Retry failed adding chunks: {e2}")
+                return False
     
     def search_documents(self, query: str, n_results: int = 5, 
                         source_filter: Optional[str] = None,
