@@ -20,6 +20,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.config import get_settings
+from langchain.schema import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Setup logging
 logging.basicConfig(
@@ -76,6 +78,78 @@ class WebScraper:
         
         logger.info(f"Successfully scraped {len(self.scraped_pages)} pages")
         return self.scraped_pages
+    
+    def convert_to_documents(self, split: bool = True) -> List[Document]:
+        """
+        Convert scraped pages to LangChain Documents.
+        
+        Args:
+            split: Whether to split documents into chunks (default: True)
+            
+        Returns:
+            List of LangChain Document objects
+        """
+        logger.info(f"Converting {len(self.scraped_pages)} scraped pages to LangChain Documents")
+        
+        documents = []
+        
+        for page in self.scraped_pages:
+            # Create LangChain Document with content and metadata
+            doc = Document(
+                page_content=page.content,
+                metadata={
+                    **page.metadata,  # Include all existing metadata
+                    'source_type': 'website',
+                }
+            )
+            documents.append(doc)
+        
+        logger.info(f"Created {len(documents)} LangChain Documents")
+        
+        if split:
+            documents = self._split_documents(documents)
+        
+        return documents
+    
+    def _split_documents(self, documents: List[Document]) -> List[Document]:
+        """
+        Split documents into smaller chunks using RecursiveCharacterTextSplitter.
+        
+        Args:
+            documents: List of LangChain Documents to split
+            
+        Returns:
+            List of split LangChain Documents
+        """
+        logger.info(f"Splitting {len(documents)} documents into chunks")
+        
+        # Initialize text splitter with configuration from settings
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=self.settings.chunk_size,
+            chunk_overlap=self.settings.chunk_overlap,
+            length_function=len,
+            separators=[
+                "\n\n",  # Paragraph breaks
+                "\n",    # Line breaks
+                ". ",    # Sentence ends
+                ", ",    # Clause breaks
+                " ",     # Word breaks
+                ""       # Character breaks (last resort)
+            ],
+            is_separator_regex=False
+        )
+        
+        # Split documents
+        split_docs = text_splitter.split_documents(documents)
+        
+        # Add chunk information to metadata
+        for i, doc in enumerate(split_docs):
+            doc.metadata['chunk_id'] = i
+            doc.metadata['total_chunks'] = len(split_docs)
+        
+        logger.info(f"Split into {len(split_docs)} chunks")
+        
+        return split_docs
     
     async def _scrape_page(self, session: aiohttp.ClientSession, url: str) -> Optional[ScrapedPage]:
         """Scrape a single page and extract content."""
@@ -415,6 +489,22 @@ class WebScraper:
         print("="*80 + "\n")
 
 
+async def scrape_and_create_documents(split: bool = True) -> List[Document]:
+    """
+    Convenience function to scrape website and return LangChain Documents.
+    
+    Args:
+        split: Whether to split documents into chunks (default: True)
+        
+    Returns:
+        List of LangChain Document objects ready for ingestion
+    """
+    scraper = WebScraper()
+    await scraper.scrape_all_pages()
+    documents = scraper.convert_to_documents(split=split)
+    return documents
+
+
 async def main():
     """Main function to run the scraper."""
     try:
@@ -424,10 +514,35 @@ async def main():
         # Scrape all pages
         scraped_pages = await scraper.scrape_all_pages()
         
-        # Print results
+        # Print scraped results
         scraper.print_scraped_data()
         
-        return scraped_pages
+        # Convert to LangChain Documents and split
+        documents = scraper.convert_to_documents(split=True)
+        
+        # Print document statistics
+        print("\n" + "="*80)
+        print("LANGCHAIN DOCUMENTS SUMMARY")
+        print("="*80)
+        print(f"\nTotal documents after splitting: {len(documents)}")
+        
+        if documents:
+            print(f"\nSample chunks (first 3):")
+            for i, doc in enumerate(documents[:3], 1):
+                print(f"\n[Chunk {i}]")
+                print(f"Source: {doc.metadata.get('title', 'Unknown')}")
+                print(f"Category: {doc.metadata.get('category', 'Unknown')}")
+                print(f"Content Type: {doc.metadata.get('content_type', 'Unknown')}")
+                print(f"Chunk ID: {doc.metadata.get('chunk_id', 'Unknown')}")
+                print(f"Content Length: {len(doc.page_content)} chars")
+                print(f"Content Preview:")
+                print("-" * 40)
+                print(doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content)
+                print("-" * 80)
+        
+        print("="*80 + "\n")
+        
+        return documents
         
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
@@ -441,9 +556,9 @@ if __name__ == "__main__":
     print("🕷️  Starting Web Scraper for Aastha Co-operative Credit Society")
     print("="*80)
     
-    scraped_data = asyncio.run(main())
+    documents = asyncio.run(main())
     
-    if scraped_data:
-        print(f"\n✅ Successfully scraped {len(scraped_data)} pages")
+    if documents:
+        print(f"\n✅ Successfully created {len(documents)} LangChain document chunks ready for ingestion")
     else:
-        print("\n❌ No pages were scraped successfully")
+        print("\n❌ No documents were created")
