@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     chunk_size: int = Field(default=1200, env="CHUNK_SIZE")
     chunk_overlap: int = Field(default=200, env="CHUNK_OVERLAP")
     
+    # RAG Agent Configuration
+    rag_retrieval_k: int = Field(default=5, env="RAG_RETRIEVAL_K")
+    rag_max_retries: int = Field(default=3, env="RAG_MAX_RETRIES")
+    rag_model: str = Field(default="gpt-4", env="RAG_MODEL")
+    rag_temperature: float = Field(default=0.2, env="RAG_TEMPERATURE")
+    
     # Website Scraping
     website_base_url: str = Field(default="http://myaastha.in", env="WEBSITE_BASE_URL")
     scraping_delay: float = Field(default=1.0, env="SCRAPING_DELAY")  # seconds between requests
