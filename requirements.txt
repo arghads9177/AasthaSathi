@@ -21,3 +21,5 @@ aiofiles
 httpx
 aiohttp
 PyMuPDF
+pytest
+pytest-asyncio

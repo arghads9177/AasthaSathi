@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     # banking_api_key: Optional[str] = Field(default=None, env="BANKING_API_KEY")
     banking_auth_key: Optional[str] = Field(default=None, env="BANKING_AUTH_KEY")  # Added missing field
     banking_api_timeout: int = Field(default=30, env="BANKING_API_TIMEOUT")
+    banking_ocode: str = Field(default="aastha", env="BANKING_OCODE")  # Organization code for API requests
     
     # Security
     secret_key: str = Field(default="your-secret-key-here", env="SECRET_KEY")
