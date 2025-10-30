@@ -189,7 +189,7 @@ class CobankAPIClient:
         """
         return self.post("/transaction/search", filters)
     
-    def get_available_balance(self, ocode: str, accountno: str) -> float:
+    def get_available_balance(self, ocode: str, accountno: str) -> dict:
         """
         Get available balance for an account.
         
@@ -198,7 +198,7 @@ class CobankAPIClient:
             accountno: Account number
             
         Returns:
-            Available balance
+            Dictionary with balance information (cbalance, tdate)
         """
         endpoint = f"/transaction/availableBalance/{ocode}/{accountno}"
         return self.get(endpoint)

@@ -20,6 +20,6 @@ python-multipart
 aiofiles
 httpx
 aiohttp
-PyMuPDF
+rich
 pytest
 pytest-asyncio

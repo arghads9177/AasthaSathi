@@ -28,6 +28,15 @@ class AgentState(TypedDict):
     user_query: str                              # Original user query
     reformulated_query: Optional[str]            # Query after reformulation
     
+    # Routing information
+    datasource: Optional[str]                    # "api", "rag", or "hybrid"
+    routing_reasoning: Optional[str]             # Why this route was chosen
+    api_queries: Optional[List[str]]             # Specific API queries to make
+    
+    # API results
+    api_context: Optional[str]                   # Results from API calls
+    api_success: Optional[bool]                  # Whether API calls succeeded
+    
     # Retrieval (Top 5 documents)
     retrieved_documents: List[RetrievedDocument] # All retrieved docs
     relevant_documents: List[RetrievedDocument]  # Only relevant docs
