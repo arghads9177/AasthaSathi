@@ -10,12 +10,13 @@ whether they should be handled by:
 
 from typing import Literal, TypedDict
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+import logging
 
-from core.config import Settings
+from core.config import Settings, get_provider_manager
 from agents.prompts import ROUTER_SYSTEM_PROMPT
 
+logger = logging.getLogger(__name__)
 
 # Load settings
 settings = Settings()
@@ -52,22 +53,15 @@ class QueryRouter:
         self.model_name = model_name or settings.default_model
         self.temperature = temperature
         
-        # Initialize LLM with structured output
-        # Using method='function_calling' for compatibility with gpt-4
-        self.llm = ChatOpenAI(
-            model=self.model_name,
-            temperature=self.temperature,
-            api_key=settings.openai_api_key
-        ).with_structured_output(RouteQuery, method="function_calling")
+        # Get provider manager for automatic fallback
+        self.provider_manager = get_provider_manager()
+        logger.info(f"Router initialized with provider manager (fallback enabled: {settings.enable_llm_fallback})")
         
         # Create prompt template
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", ROUTER_SYSTEM_PROMPT),
             ("human", "Query: {query}")
         ])
-        
-        # Create the routing chain
-        self.chain = self.prompt | self.llm
     
     def route(self, query: str) -> RouteQuery:
         """
@@ -79,8 +73,25 @@ class QueryRouter:
         Returns:
             RouteQuery object with datasource, reasoning, and api_queries
         """
-        result = self.chain.invoke({"query": query})
-        return result
+        # Format prompt
+        messages = self.prompt.format_messages(query=query)
+        
+        # Convert to dict format for provider manager
+        messages_dict = [
+            {"role": msg.type if msg.type != "human" else "user", "content": msg.content}
+            for msg in messages
+        ]
+        
+        # Invoke with fallback support
+        result = self.provider_manager.invoke_with_fallback(
+            messages=messages_dict,
+            temperature=self.temperature,
+            response_format=RouteQuery
+        )
+        
+        logger.info(f"Query routed to: {result['response'].datasource} (provider: {result['provider']})")
+        
+        return result['response']
     
     def route_dict(self, query: str) -> dict:
         """

@@ -18,6 +18,15 @@ except ImportError:
         raise ImportError("Please install pydantic-settings: pip install pydantic-settings")
 
 
+# Import provider classes
+from core.llm_providers import (
+    OpenAIProvider,
+    GroqProvider,
+    GeminiProvider,
+    ProviderManager
+)
+
+
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
@@ -29,12 +38,18 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     gemini_api_key: Optional[str] = Field(default=None, env="GEMINI_API_KEY")
+    groq_api_key: Optional[str] = Field(default=None, env="GROQ_API_KEY")
     
     # LLM Configuration
     default_llm_provider: str = Field(default="openai", env="DEFAULT_LLM_PROVIDER")  # "openai" or "gemini"
     default_model: str = Field(default="gpt-4", env="DEFAULT_MODEL")
     temperature: float = Field(default=0.1, env="LLM_TEMPERATURE")
     max_tokens: int = Field(default=2000, env="LLM_MAX_TOKENS")
+    
+    # LLM Fallback Configuration
+    enable_llm_fallback: bool = Field(default=True, env="ENABLE_LLM_FALLBACK")
+    fallback_llm_provider: str = Field(default="groq", env="FALLBACK_LLM_PROVIDER")
+    fallback_model: str = Field(default="llama-3.3-70b-versatile", env="FALLBACK_MODEL")
     
     # Embeddings Configuration
     embedding_provider: str = Field(default="openai", env="EMBEDDING_PROVIDER")
@@ -93,24 +108,87 @@ class Settings(BaseSettings):
 # Global settings instance
 settings = Settings()
 
+# Global provider manager instance
+_provider_manager: Optional[ProviderManager] = None
+
 
 def get_settings() -> Settings:
     """Get application settings."""
     return settings
 
 
+def get_provider_manager() -> ProviderManager:
+    """
+    Get the global provider manager instance (singleton).
+    
+    Creates and configures the provider manager with all available providers
+    based on the settings. The providers are prioritized as:
+    1. OpenAI (primary, priority 1)
+    2. Groq (fallback, priority 2) 
+    3. Gemini (final fallback, priority 3)
+    
+    Returns:
+        ProviderManager: Configured provider manager with automatic fallback
+    """
+    global _provider_manager
+    
+    if _provider_manager is None:
+        providers = []
+        
+        # Add OpenAI provider (priority 1)
+        if settings.openai_api_key:
+            openai_provider = OpenAIProvider(
+                api_key=settings.openai_api_key,
+                model=settings.default_model,
+                temperature=settings.temperature,
+                max_tokens=settings.max_tokens,
+                priority=1
+            )
+            providers.append(openai_provider)
+        
+        # Add Groq provider (priority 2)
+        if settings.groq_api_key:
+            groq_provider = GroqProvider(
+                api_key=settings.groq_api_key,
+                model=settings.fallback_model,
+                temperature=settings.temperature,
+                max_tokens=settings.max_tokens,
+                priority=2
+            )
+            providers.append(groq_provider)
+        
+        # Add Gemini provider (priority 3)
+        if settings.gemini_api_key:
+            gemini_provider = GeminiProvider(
+                api_key=settings.gemini_api_key,
+                model="gemini-1.5-pro",
+                temperature=settings.temperature,
+                max_tokens=settings.max_tokens,
+                priority=3
+            )
+            providers.append(gemini_provider)
+        
+        if not providers:
+            raise ValueError(
+                "No LLM providers configured. Please set at least one of: "
+                "OPENAI_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY"
+            )
+        
+        _provider_manager = ProviderManager(
+            providers=providers,
+            enable_fallback=settings.enable_llm_fallback
+        )
+    
+    return _provider_manager
+
+
 def validate_api_keys():
     """Validate that required API keys are present."""
     issues = []
     
-    if not settings.openai_api_key and not settings.gemini_api_key:
-        issues.append("Either OPENAI_API_KEY or GEMINI_API_KEY must be provided")
-    
-    if settings.default_llm_provider == "openai" and not settings.openai_api_key:
-        issues.append("OPENAI_API_KEY is required when using OpenAI as default provider")
-    
-    if settings.default_llm_provider == "gemini" and not settings.gemini_api_key:
-        issues.append("GEMINI_API_KEY is required when using Gemini as default provider")
+    # At least one provider must be configured
+    if not settings.openai_api_key and not settings.gemini_api_key and not settings.groq_api_key:
+        issues.append("At least one LLM provider API key must be provided (OPENAI_API_KEY, GROQ_API_KEY, or GEMINI_API_KEY)")
     
     if issues:
         raise ValueError("Configuration issues:\n" + "\n".join(f"- {issue}" for issue in issues))

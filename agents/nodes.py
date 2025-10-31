@@ -9,7 +9,6 @@ from typing import List
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI
 
 from agents.models import AgentState, RetrievedDocument
 from agents.prompts import (
@@ -26,9 +25,41 @@ from agents.utils import (
     format_context_from_documents,
     extract_sources
 )
-from core.config import get_settings
+from core.config import get_settings, get_provider_manager
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Helper Functions - Invoke LLM with provider fallback
+# ============================================================================
+
+def _invoke_llm(messages: list, temperature: float = None) -> str:
+    """
+    Invoke LLM using provider manager with automatic fallback.
+    
+    Args:
+        messages: List of message dicts with 'role' and 'content'
+        temperature: Optional temperature override
+        
+    Returns:
+        Response text from LLM
+    """
+    settings = get_settings()
+    provider_manager = get_provider_manager()
+    
+    kwargs = {}
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    else:
+        kwargs["temperature"] = settings.rag_temperature
+    
+    result = provider_manager.invoke_with_fallback(
+        messages=messages,
+        **kwargs
+    )
+    
+    return result["response"]
 
 
 # ============================================================================
@@ -37,69 +68,75 @@ logger = logging.getLogger(__name__)
 
 def get_relevancy_check_chain():
     """
-    Create LCEL chain for document relevancy checking.
+    Create chain for document relevancy checking.
     
     Returns:
-        Runnable chain for relevancy checking
+        Callable that checks relevancy using provider manager
     """
-    settings = get_settings()
+    prompt_template = ChatPromptTemplate.from_template(RELEVANCY_CHECK_PROMPT)
     
-    prompt = ChatPromptTemplate.from_template(RELEVANCY_CHECK_PROMPT)
-    llm = ChatOpenAI(
-        model=settings.rag_model,
-        temperature=settings.rag_temperature,
-        api_key=settings.openai_api_key
-    )
-    output_parser = StrOutputParser()
-    
-    # LCEL chain: prompt | llm | parser
-    chain = prompt | llm | output_parser
+    def chain(inputs):
+        # Format prompt
+        formatted = prompt_template.format_messages(**inputs)
+        
+        # Convert to dict messages
+        messages = [
+            {"role": "system" if msg.type == "system" else "user", "content": msg.content}
+            for msg in formatted
+        ]
+        
+        # Invoke with fallback
+        return _invoke_llm(messages)
     
     return chain
 
 
 def get_query_reformulation_chain():
     """
-    Create LCEL chain for query reformulation.
+    Create chain for query reformulation.
     
     Returns:
-        Runnable chain for query reformulation
+        Callable that reformulates query using provider manager
     """
-    settings = get_settings()
+    prompt_template = ChatPromptTemplate.from_template(QUERY_REFORMULATION_PROMPT)
     
-    prompt = ChatPromptTemplate.from_template(QUERY_REFORMULATION_PROMPT)
-    llm = ChatOpenAI(
-        model=settings.rag_model,
-        temperature=0.7,  # Higher temperature for creativity
-        api_key=settings.openai_api_key
-    )
-    output_parser = StrOutputParser()
-    
-    # LCEL chain with post-processing
-    chain = prompt | llm | output_parser
+    def chain(inputs):
+        # Format prompt
+        formatted = prompt_template.format_messages(**inputs)
+        
+        # Convert to dict messages
+        messages = [
+            {"role": "system" if msg.type == "system" else "user", "content": msg.content}
+            for msg in formatted
+        ]
+        
+        # Invoke with fallback (higher temperature for creativity)
+        return _invoke_llm(messages, temperature=0.7)
     
     return chain
 
 
 def get_answer_generation_chain():
     """
-    Create LCEL chain for answer generation.
+    Create chain for answer generation.
     
     Returns:
-        Runnable chain for answer generation
+        Callable that generates answer using provider manager
     """
-    settings = get_settings()
+    prompt_template = ChatPromptTemplate.from_template(ANSWER_GENERATION_PROMPT)
     
-    prompt = ChatPromptTemplate.from_template(ANSWER_GENERATION_PROMPT)
-    llm = ChatOpenAI(
-        model=settings.rag_model,
-        temperature=settings.rag_temperature,
-        api_key=settings.openai_api_key
-    )
-    output_parser = StrOutputParser()
-    
-    # LCEL chain: prompt | llm | parser
-    chain = prompt | llm | output_parser
+    def chain(inputs):
+        # Format prompt
+        formatted = prompt_template.format_messages(**inputs)
+        
+        # Convert to dict messages
+        messages = [
+            {"role": "system" if msg.type == "system" else "user", "content": msg.content}
+            for msg in formatted
+        ]
+        
+        # Invoke with fallback
+        return _invoke_llm(messages)
     
     return chain
 
@@ -192,8 +229,8 @@ def check_relevancy_node(state: AgentState) -> AgentState:
             # Truncate content to avoid token limits
             truncated_content = truncate_document_content(doc["content"], max_chars=2000)
             
-            # Invoke LCEL chain
-            result = relevancy_chain.invoke({
+            # Invoke chain
+            result = relevancy_chain({
                 "query": query,
                 "document_content": truncated_content,
                 "source": doc["source"],
@@ -251,8 +288,8 @@ def reform_query_node(state: AgentState) -> AgentState:
         if previous_query:
             prev_info = f"Previous Reformulated Query: {previous_query}\n"
         
-        # Invoke LCEL chain
-        reformulated = reformulation_chain.invoke({
+        # Invoke chain
+        reformulated = reformulation_chain({
             "original_query": original_query,
             "previous_reformulation": prev_info,
             "retry_count": retry_count + 1
@@ -307,8 +344,8 @@ def generate_answer_node(state: AgentState) -> AgentState:
                 formatted_history=formatted_history
             )
         
-        # Invoke LCEL chain
-        answer = answer_chain.invoke({
+        # Invoke chain
+        answer = answer_chain({
             "chat_history": history_text,
             "query": query,
             "context": context

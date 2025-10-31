@@ -7,14 +7,16 @@ queries about branches, deposit schemes, loan schemes, and other real-time data.
 
 from typing import Annotated, Literal, TypedDict, Sequence
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.graph.message import add_messages
+import logging
 
-from core.config import Settings
+from core.config import Settings, get_provider_manager
 from agents.tools.api_tools import get_api_tools
 
+
+logger = logging.getLogger(__name__)
 
 # Load settings
 settings = Settings()
@@ -41,15 +43,12 @@ class APIAgent:
         self.model_name = model_name or settings.default_model
         self.temperature = temperature
         
+        # Get provider manager for automatic fallback
+        self.provider_manager = get_provider_manager()
+        logger.info(f"API Agent initialized with provider manager (fallback enabled: {settings.enable_llm_fallback})")
+        
         # Get API tools
         self.tools = get_api_tools()
-        
-        # Initialize LLM with tools
-        self.llm = ChatOpenAI(
-            model=self.model_name,
-            temperature=self.temperature,
-            api_key=settings.openai_api_key
-        ).bind_tools(self.tools)
         
         # Create the graph
         self.graph = self._create_graph()
@@ -83,7 +82,7 @@ class APIAgent:
     
     def _agent_node(self, state: APIAgentState) -> APIAgentState:
         """
-        Agent node that calls the LLM.
+        Agent node that calls the LLM with tools.
         
         Args:
             state: Current agent state
@@ -93,10 +92,34 @@ class APIAgent:
         """
         try:
             messages = state["messages"]
-            response = self.llm.invoke(messages)
+            
+            # Convert LangChain messages to dict format
+            messages_dict = []
+            for msg in messages:
+                if isinstance(msg, HumanMessage):
+                    messages_dict.append({"role": "user", "content": msg.content})
+                elif isinstance(msg, AIMessage):
+                    messages_dict.append({"role": "assistant", "content": msg.content})
+                elif isinstance(msg, ToolMessage):
+                    # Tool messages are added as user messages with tool context
+                    messages_dict.append({"role": "user", "content": f"Tool result: {msg.content}"})
+            
+            # Invoke with tools using provider manager
+            result = self.provider_manager.invoke_with_fallback(
+                messages=messages_dict,
+                tools=self.tools,
+                temperature=self.temperature
+            )
+            
+            response = result["response"]
+            logger.info(f"API Agent used provider: {result['provider']}")
+            
+            # Return the response message
             return {"messages": [response]}
+            
         except Exception as e:
             error_msg = f"Agent error: {str(e)}"
+            logger.error(error_msg)
             return {
                 "messages": [AIMessage(content=f"I encountered an error: {error_msg}")],
                 "error": error_msg

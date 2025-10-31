@@ -10,6 +10,8 @@ pydantic
 pydantic-settings
 requests
 langchain-openai
+langchain-groq
+langchain-google-genai
 langchain-chroma
 beautifulsoup4
 lxml
