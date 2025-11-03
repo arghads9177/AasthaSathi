@@ -168,21 +168,31 @@ class GroqProvider(BaseLLMProvider):
             self.record_error(e)
             self.handle_error(e)
     
-    def _convert_messages(self, messages: List[Dict[str, str]]) -> list:
-        """Convert dict messages to LangChain message objects."""
+    def _convert_messages(self, messages: List) -> list:
+        """Convert messages to LangChain message objects if needed."""
+        from langchain_core.messages import BaseMessage
+        
         lc_messages = []
         for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            
-            if role == "system":
-                lc_messages.append(SystemMessage(content=content))
-            elif role in ("user", "human"):
-                lc_messages.append(HumanMessage(content=content))
-            elif role in ("assistant", "ai"):
-                lc_messages.append(AIMessage(content=content))
+            # If already a LangChain message object, use it directly
+            if isinstance(msg, BaseMessage):
+                lc_messages.append(msg)
+            # If dict, convert to appropriate message type
+            elif isinstance(msg, dict):
+                role = msg["role"]
+                content = msg["content"]
+                
+                if role == "system":
+                    lc_messages.append(SystemMessage(content=content))
+                elif role in ("user", "human"):
+                    lc_messages.append(HumanMessage(content=content))
+                elif role in ("assistant", "ai"):
+                    lc_messages.append(AIMessage(content=content))
+                else:
+                    lc_messages.append(HumanMessage(content=content))
             else:
-                lc_messages.append(HumanMessage(content=content))
+                # Fallback: treat as human message with string content
+                lc_messages.append(HumanMessage(content=str(msg)))
         
         return lc_messages
     

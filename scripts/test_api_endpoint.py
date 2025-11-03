@@ -7,6 +7,7 @@ Tests the /api/v1/query endpoint with sample queries.
 
 import requests
 import json
+from requests.auth import HTTPBasicAuth
 from rich.console import Console
 from rich.panel import Panel
 from rich.json import JSON
@@ -17,8 +18,12 @@ console = Console()
 API_BASE_URL = "http://localhost:8000"
 API_ENDPOINT = f"{API_BASE_URL}/api/v1/query"
 
+# Authentication credentials
+API_USERNAME = "aastha_admin"
+API_PASSWORD = "aastha_secure_2025"
 
-def test_query(query_text: str, description: str):
+
+def test_query(query_text: str, description: str, use_auth: bool = True):
     """Test a single query."""
     console.print(f"\n[bold cyan]Test: {description}[/bold cyan]")
     console.print(f"[dim]Query: {query_text}[/dim]")
@@ -30,10 +35,13 @@ def test_query(query_text: str, description: str):
         "include_metadata": True
     }
     
+    # Prepare auth
+    auth = HTTPBasicAuth(API_USERNAME, API_PASSWORD) if use_auth else None
+    
     try:
         # Send request
         console.print("[yellow]Sending request...[/yellow]")
-        response = requests.post(API_ENDPOINT, json=payload, timeout=60)
+        response = requests.post(API_ENDPOINT, json=payload, auth=auth, timeout=60)
         
         # Check status
         if response.status_code == 200:
@@ -62,6 +70,8 @@ def test_query(query_text: str, description: str):
             
         else:
             console.print(f"[bold red]✗ Error: {response.status_code}[/bold red]")
+            if response.status_code == 401:
+                console.print("[yellow]Authentication failed - Invalid credentials[/yellow]")
             console.print(response.text)
             
     except requests.exceptions.ConnectionError:
@@ -91,11 +101,47 @@ def main():
     
     # Test queries
     tests = [
-        ("List all branches in Patna", "API Query - Branch Search"),
+        ("List all branches in Asansol", "API Query - Branch Search"),
         ("What savings schemes are available?", "API Query - Scheme Search"),
         ("How do I open an account?", "RAG Query - Procedure"),
         ("Show me all RD schemes and explain how they work", "Hybrid Query - Combined")
     ]
+    
+    # Test authentication first
+    console.print("\n[bold yellow]═══ Testing Authentication ═══[/bold yellow]\n")
+    
+    console.print("[bold cyan]Test: Invalid Credentials[/bold cyan]")
+    payload = {"query": "Test query", "include_sources": False}
+    try:
+        response = requests.post(
+            API_ENDPOINT, 
+            json=payload,
+            auth=HTTPBasicAuth("wrong_user", "wrong_pass"),
+            timeout=5
+        )
+        if response.status_code == 401:
+            console.print("[green]✓ Authentication correctly rejected invalid credentials[/green]")
+        else:
+            console.print(f"[red]✗ Expected 401, got {response.status_code}[/red]")
+    except Exception as e:
+        console.print(f"[red]✗ Error testing auth: {e}[/red]")
+    
+    console.print("\n[bold cyan]Test: Valid Credentials[/bold cyan]")
+    try:
+        response = requests.post(
+            API_ENDPOINT,
+            json=payload,
+            auth=HTTPBasicAuth(API_USERNAME, API_PASSWORD),
+            timeout=60
+        )
+        if response.status_code == 200:
+            console.print("[green]✓ Authentication successful with valid credentials[/green]")
+        else:
+            console.print(f"[red]✗ Expected 200, got {response.status_code}[/red]")
+    except Exception as e:
+        console.print(f"[red]✗ Error: {e}[/red]")
+    
+    console.print("\n[bold yellow]═══ Testing Query Functionality ═══[/bold yellow]")
     
     for query, description in tests:
         test_query(query, description)

@@ -71,7 +71,7 @@ def test_api_queries():
     agent = get_integrated_agent()
     
     queries = [
-        "List all branches in Patna",
+        "List all branches in Asansol",
         "What savings schemes are available?",
         "How many members joined in January 2025?",
         "Show me all SB accounts opened in 2024",

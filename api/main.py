@@ -1,16 +1,17 @@
 """
 FastAPI application for AasthaSathi Banking Assistant.
 
-Simple REST API that exposes the integrated agent workflow.
+Simple REST API that exposes the integrated agent workflow with Basic Authentication.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 import logging
 
 from api.models import QueryRequest, QueryResponse, ErrorResponse
 from api.services.agent_service import get_agent_service
+from api.auth import get_current_user
 
 # Setup logging
 logging.basicConfig(
@@ -23,7 +24,29 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="AasthaSathi Banking Assistant API",
-    description="AI-powered banking assistant with intelligent routing (API + RAG + Hybrid)",
+    description="""
+    AI-powered banking assistant with intelligent routing (API + RAG + Hybrid).
+    
+    ## Authentication
+    
+    This API uses **HTTP Basic Authentication**. Include credentials in the Authorization header:
+    
+    ```
+    Authorization: Basic <base64-encoded-username:password>
+    ```
+    
+    Most HTTP clients handle this automatically when you provide username and password.
+    
+    ## Endpoints
+    
+    - **POST /api/v1/query** - Process banking queries (requires auth)
+    - **GET /api/v1/health** - Health check (public)
+    - **GET /** - API information (public)
+    
+    ## Security Note
+    
+    ⚠️ Always use HTTPS in production to encrypt credentials during transmission.
+    """,
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -69,12 +92,17 @@ async def health_check():
     responses={
         200: {"description": "Successful query response"},
         400: {"model": ErrorResponse, "description": "Bad request"},
+        401: {"description": "Unauthorized - Invalid credentials"},
         500: {"model": ErrorResponse, "description": "Internal server error"}
     }
 )
-async def query(request: QueryRequest):
+async def query(request: QueryRequest, username: str = Depends(get_current_user)):
     """
     Process a user query through the integrated agent.
+    
+    **Authentication Required**: HTTP Basic Auth
+    - Send credentials in Authorization header: `Basic <base64-encoded-username:password>`
+    - Most HTTP clients handle this automatically
     
     This endpoint accepts a natural language query and returns an AI-generated
     answer using intelligent routing (API, RAG, or Hybrid).
@@ -96,7 +124,7 @@ async def query(request: QueryRequest):
     - Execution metadata (timing, path, etc.)
     """
     try:
-        logger.info(f"Received query: '{request.query[:50]}...'")
+        logger.info(f"[User: {username}] Received query: '{request.query[:50]}...'")
         
         # Get agent service
         agent_service = get_agent_service()

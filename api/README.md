@@ -1,6 +1,18 @@
 # AasthaSathi API - Quick Start Guide
 
-## 🚀 Running the API
+## � Authentication
+
+The API uses **HTTP Basic Authentication** to secure endpoints. You must provide valid credentials with each request.
+
+### Default Credentials
+- **Username**: `aastha_admin`
+- **Password**: `aastha_secure_2025`
+
+⚠️ **Security Note**: Change these credentials in production by updating the `.env` file. Always use HTTPS in production to encrypt credentials during transmission.
+
+---
+
+## �🚀 Running the API
 
 ### 1. Start the API Server
 
@@ -17,23 +29,32 @@ Or use the Python executable from virtual environment:
 
 The API will be available at:
 - **API**: http://localhost:8000
-- **Docs**: http://localhost:8000/docs (Interactive Swagger UI)
+- **Docs**: http://localhost:8000/docs (Interactive Swagger UI with auth)
 - **ReDoc**: http://localhost:8000/redoc (Alternative documentation)
 
 ---
 
 ## 📡 API Endpoints
 
-### 1. Health Check
+### 1. Health Check (Public - No Auth Required)
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
 
-### 2. Query Endpoint
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "AasthaSathi API"
+}
+```
 
-**Using cURL:**
+### 2. Query Endpoint (Requires Authentication)
+
+**Using cURL with Basic Auth:**
 ```bash
 curl -X POST "http://localhost:8000/api/v1/query" \
+     -u aastha_admin:aastha_secure_2025 \
      -H "Content-Type: application/json" \
      -d '{
        "query": "What savings schemes are available?",
@@ -45,9 +66,11 @@ curl -X POST "http://localhost:8000/api/v1/query" \
 **Using Python requests:**
 ```python
 import requests
+from requests.auth import HTTPBasicAuth
 
 response = requests.post(
     "http://localhost:8000/api/v1/query",
+    auth=HTTPBasicAuth('aastha_admin', 'aastha_secure_2025'),
     json={
         "query": "List all branches in Patna",
         "include_sources": True,
@@ -60,10 +83,14 @@ print(response.json())
 
 **Using JavaScript/Fetch:**
 ```javascript
+// Encode credentials to Base64
+const credentials = btoa('aastha_admin:aastha_secure_2025');
+
 fetch('http://localhost:8000/api/v1/query', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
+    'Authorization': `Basic ${credentials}`
   },
   body: JSON.stringify({
     query: 'How do I open an account?',
@@ -73,6 +100,29 @@ fetch('http://localhost:8000/api/v1/query', {
 })
 .then(response => response.json())
 .then(data => console.log(data));
+```
+
+### Authentication Errors
+
+**401 Unauthorized** - Invalid or missing credentials:
+```json
+{
+  "detail": "Invalid authentication credentials"
+}
+```
+
+To test authentication:
+```bash
+# Without auth (should fail with 401)
+curl -X POST "http://localhost:8000/api/v1/query" \
+     -H "Content-Type: application/json" \
+     -d '{"query": "test"}'
+
+# With correct auth (should succeed with 200)
+curl -X POST "http://localhost:8000/api/v1/query" \
+     -u aastha_admin:aastha_secure_2025 \
+     -H "Content-Type: application/json" \
+     -d '{"query": "test"}'
 ```
 
 ---

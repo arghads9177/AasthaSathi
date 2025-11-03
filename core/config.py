@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=100, env="RATE_LIMIT_REQUESTS")
     rate_limit_period: int = Field(default=3600, env="RATE_LIMIT_PERIOD")  # seconds
     
+    # API Authentication (Basic Auth)
+    api_username: str = Field(default="aastha_admin", env="API_USERNAME")
+    api_password: str = Field(default="aastha_secure_2025", env="API_PASSWORD")
+    
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
