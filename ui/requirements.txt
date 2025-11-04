@@ -1,0 +1,19 @@
+# Streamlit UI Dependencies
+
+# Core UI Framework
+streamlit>=1.30.0
+
+# API Communication
+requests>=2.31.0
+
+# UI Enhancements
+streamlit-chat>=0.1.1
+streamlit-extras>=0.3.6
+
+# Data Visualization
+plotly>=5.18.0
+pandas>=2.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+Pillow>=10.1.0
