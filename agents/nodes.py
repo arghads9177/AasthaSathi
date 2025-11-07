@@ -145,14 +145,31 @@ def retrieve_node(state: AgentState) -> AgentState:
     """
     Retrieve top-5 documents from ChromaDB using vector similarity search.
     
+    For multilingual queries:
+    - Uses translated_query (English) if available for vector search
+    - Falls back to user_query if no translation available
+    - Prioritizes reformulated_query if query reformulation occurred
+    
     Args:
         state: Current agent state
         
     Returns:
         Updated agent state with retrieved documents
     """
-    # Use reformulated query if available, else original
-    query = state.get("reformulated_query") or state["user_query"]
+    # Query selection priority:
+    # 1. reformulated_query (if query was reformulated for retry)
+    # 2. translated_query (if query was translated from non-English)
+    # 3. user_query (default - original English query or fallback)
+    
+    if state.get("reformulated_query"):
+        query = state["reformulated_query"]
+        logger.info("Using reformulated query for retrieval")
+    elif state.get("translated_query"):
+        query = state["translated_query"]
+        logger.info(f"Using translated query (from {state.get('query_language', 'unknown')}) for retrieval")
+    else:
+        query = state["user_query"]
+        logger.info("Using original query for retrieval")
     
     logger.info(f"Retrieving documents for query: '{query}'")
     
@@ -267,17 +284,26 @@ def reform_query_node(state: AgentState) -> AgentState:
     """
     Reformulate the query for better retrieval using GPT-4 with LCEL.
     
+    For multilingual queries:
+    - Reformulates the translated_query (English) if available
+    - Falls back to user_query if no translation
+    - This ensures reformulation happens in English for better retrieval
+    
     Args:
         state: Current agent state
         
     Returns:
         Updated agent state with reformulated query
     """
-    original_query = state["user_query"]
+    # Use translated query for reformulation if available (multilingual case)
+    # Otherwise use original user query (English case)
+    base_query = state.get("translated_query") or state["user_query"]
     previous_query = state.get("reformulated_query")
     retry_count = state["retry_count"]
     
     logger.info(f"Reformulating query (attempt {retry_count + 1}/3)")
+    if state.get("translated_query"):
+        logger.info(f"Reformulating translated query (from {state.get('query_language', 'unknown')})")
     
     try:
         # Get LCEL chain for query reformulation
@@ -290,7 +316,7 @@ def reform_query_node(state: AgentState) -> AgentState:
         
         # Invoke chain
         reformulated = reformulation_chain({
-            "original_query": original_query,
+            "original_query": base_query,
             "previous_reformulation": prev_info,
             "retry_count": retry_count + 1
         })
@@ -316,6 +342,7 @@ def reform_query_node(state: AgentState) -> AgentState:
 def generate_answer_node(state: AgentState) -> AgentState:
     """
     Generate final answer using relevant documents and chat history with LCEL.
+    Uses language-aware prompts and responds in user's language.
     
     Args:
         state: Current agent state
@@ -324,32 +351,72 @@ def generate_answer_node(state: AgentState) -> AgentState:
         Updated agent state with generated answer
     """
     query = state["user_query"]
+    original_query = state.get("original_query", query)
     relevant_docs = state["relevant_documents"]
     chat_history = state.get("messages", [])
+    response_lang = state.get("response_language", "en")
     
-    logger.info(f"Generating answer using {len(relevant_docs)} relevant documents")
+    logger.info(f"Generating answer using {len(relevant_docs)} relevant documents (language: {response_lang})")
     
     try:
-        # Get LCEL chain for answer generation
-        answer_chain = get_answer_generation_chain()
+        # Import multilingual prompts
+        from agents.prompts_multilingual import get_prompt
+        from core.language_detector import get_language_name
         
-        # Format context from relevant documents
-        context = format_context_from_documents(relevant_docs, include_metadata=True)
+        # Get language-specific answer generation prompt
+        answer_prompt_template = get_prompt("answer_generation", response_lang)
         
-        # Format chat history (last 10 messages)
-        history_text = ""
-        if len(chat_history) > 0:
-            formatted_history = format_chat_history(chat_history, max_messages=10)
-            history_text = CHAT_HISTORY_HEADER.format(
-                formatted_history=formatted_history
-            )
-        
-        # Invoke chain
-        answer = answer_chain({
-            "chat_history": history_text,
-            "query": query,
-            "context": context
-        })
+        # If using non-English prompt, we need to create a new chain
+        if response_lang != "en" and answer_prompt_template:
+            # Create language-specific chain
+            from langchain_core.prompts import ChatPromptTemplate
+            
+            prompt_template = ChatPromptTemplate.from_template(answer_prompt_template)
+            
+            # Format context from relevant documents
+            context = format_context_from_documents(relevant_docs, include_metadata=True)
+            
+            # Format chat history (last 10 messages)
+            history_text = ""
+            if len(chat_history) > 0:
+                formatted_history = format_chat_history(chat_history, max_messages=10)
+                history_text = f"Previous Conversation:\n{formatted_history}\n\n"
+            
+            # Add language instruction
+            lang_name = get_language_name(response_lang)
+            language_instruction = f"\n\nIMPORTANT: Respond in {lang_name} language.\n\n"
+            
+            # Format prompt with language instruction
+            prompt_content = answer_prompt_template + language_instruction
+            
+            # Invoke LLM with custom prompt
+            messages = [
+                {"role": "system", "content": prompt_content},
+                {"role": "user", "content": f"{history_text}Query: {original_query}\n\nContext:\n{context}"}
+            ]
+            
+            answer = _invoke_llm(messages, temperature=0.1)
+        else:
+            # Use default English chain
+            answer_chain = get_answer_generation_chain()
+            
+            # Format context from relevant documents
+            context = format_context_from_documents(relevant_docs, include_metadata=True)
+            
+            # Format chat history (last 10 messages)
+            history_text = ""
+            if len(chat_history) > 0:
+                formatted_history = format_chat_history(chat_history, max_messages=10)
+                history_text = CHAT_HISTORY_HEADER.format(
+                    formatted_history=formatted_history
+                )
+            
+            # Invoke chain
+            answer = answer_chain({
+                "chat_history": history_text,
+                "query": query,
+                "context": context
+            })
         
         # Update state
         state["final_answer"] = answer.strip()

@@ -38,6 +38,7 @@ class AgentService:
         query: str,
         session_id: Optional[str] = None,
         chat_history: Optional[List[BaseMessage]] = None,
+        language: Optional[str] = None,
         include_sources: bool = True,
         include_metadata: bool = True
     ) -> Dict[str, Any]:
@@ -48,6 +49,7 @@ class AgentService:
             query: User's question
             session_id: Session ID for conversation continuity
             chat_history: Previous conversation messages
+            language: Preferred language for response (en/hi/bn), auto-detected if None
             include_sources: Whether to include source attribution
             include_metadata: Whether to include execution metadata
             
@@ -66,16 +68,19 @@ class AgentService:
         
         logger.info(f"Processing query #{self.request_count}: '{query[:50]}...'")
         logger.info(f"Session ID: {session_id}")
+        if language:
+            logger.info(f"Preferred language: {language}")
         
         try:
             # Get agent instance
             agent = self._get_agent()
             
-            # Process query
+            # Process query with language parameter
             result = agent.query(
                 user_query=query,
                 session_id=session_id,
-                chat_history=chat_history or []
+                chat_history=chat_history or [],
+                language=language  # Phase 4 - Pass language to agent
             )
             
             # Calculate processing time
@@ -88,13 +93,16 @@ class AgentService:
                 "answer": result.get("answer", ""),
                 "datasource": result.get("datasource", "unknown"),
                 "routing_reasoning": result.get("routing_reasoning", ""),
+                "detected_language": result.get("query_language"),  # Phase 4 - Language metadata
+                "detection_confidence": result.get("query_language_confidence"),  # Phase 4
+                "response_language": result.get("response_language"),  # Phase 4
                 "sources": result.get("sources", []) if include_sources else [],
                 "chat_history": result.get("chat_history", [])
             }
             
             # Add metadata if requested
             if include_metadata:
-                response["metadata"] = {
+                metadata = {
                     "execution_path": result.get("execution_path", []),
                     "processing_time_ms": processing_time_ms,
                     "retry_count": result.get("retry_count", 0),
@@ -102,6 +110,14 @@ class AgentService:
                     "num_retrieved": result.get("num_retrieved", 0),
                     "num_relevant": result.get("num_relevant", 0)
                 }
+                
+                # Add language metadata to metadata section as well for backward compatibility
+                if result.get("query_language"):
+                    metadata["detected_language"] = result.get("query_language")
+                    metadata["detection_confidence"] = result.get("query_language_confidence")
+                    metadata["response_language"] = result.get("response_language")
+                
+                response["metadata"] = metadata
             
             logger.info(
                 f"✓ Query processed successfully - "

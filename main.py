@@ -47,6 +47,7 @@ def print_welcome():
     console.print("  • 📚 Knowledge base queries (policies, procedures, guidelines)")
     console.print("  • 🔄 Hybrid queries (combining API + Knowledge Base)")
     console.print("  • 💬 Conversational interface with chat history")
+    console.print("  • 🌐 Multilingual support (English, Hindi, Bengali)")
     
     console.print("\n[bold yellow]Commands:[/bold yellow]")
     console.print("  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the application")
@@ -57,9 +58,10 @@ def print_welcome():
 
 
 def print_help():
-    """Print example queries."""
+    """Print example queries in multiple languages."""
     console.print("\n[bold cyan]📖 Example Queries:[/bold cyan]")
     
+    console.print("\n[bold green]English:[/bold green]")
     console.print("\n[bold yellow]API Queries (Real-time Data):[/bold yellow]")
     console.print("  • List all branches in Patna")
     console.print("  • What savings schemes are available?")
@@ -74,11 +76,30 @@ def print_help():
     console.print("\n[bold yellow]Hybrid Queries (Combined):[/bold yellow]")
     console.print("  • Show me all RD schemes and explain how they work")
     console.print("  • List branches in Gaya and their services")
-    console.print("  • What loan schemes are available and eligibility criteria?\n")
+    console.print("  • What loan schemes are available and eligibility criteria?")
+    
+    console.print("\n[bold green]हिंदी (Hindi):[/bold green]")
+    console.print("  • पटना में सभी शाखाओं की सूची दिखाएं")
+    console.print("  • कौन सी बचत योजनाएं उपलब्ध हैं?")
+    console.print("  • सदस्यता पात्रता मानदंड क्या हैं?")
+    console.print("  • खाता खोलने के लिए कौन से दस्तावेज़ आवश्यक हैं?")
+    
+    console.print("\n[bold green]বাংলা (Bengali):[/bold green]")
+    console.print("  • পাটনার সমস্ত শাখার তালিকা দেখান")
+    console.print("  • কোন সঞ্চয় প্রকল্প উপলব্ধ আছে?")
+    console.print("  • সদস্যপদের যোগ্যতার মানদণ্ড কী?")
+    console.print("  • অ্যাকাউন্ট খোলার জন্য কোন নথি প্রয়োজন?\n")
 
 
 def print_response(result: dict):
     """Print formatted response."""
+    # Language detection info (Phase 3 - Multilingual)
+    if result.get('query_language') and result.get('query_language_confidence'):
+        lang_names = {"en": "English 🇬🇧", "hi": "Hindi 🇮🇳", "bn": "Bengali 🇧🇩"}
+        lang_name = lang_names.get(result['query_language'], result['query_language'])
+        confidence = result['query_language_confidence']
+        console.print(f"\n[dim]🌐 Language: {lang_name} (confidence: {confidence:.0%})[/dim]")
+    
     # Routing info
     console.print(f"\n[dim]🧭 Route: {result['datasource']} | "
                   f"Path: {' → '.join(result['execution_path'][:3])}...[/dim]")

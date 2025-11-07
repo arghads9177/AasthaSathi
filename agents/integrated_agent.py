@@ -6,6 +6,7 @@ This module defines the unified state machine that combines:
 - API agent for real-time data
 - RAG agent for knowledge base
 - Context merging for hybrid queries
+- Multilingual support (English, Hindi, Bengali)
 """
 
 import logging
@@ -25,6 +26,9 @@ from agents.nodes import (
     fallback_node
 )
 from agents.integration_nodes import (
+    language_detection_node,
+    query_translation_node,
+    response_translation_node,
     router_node,
     api_call_node,
     context_merger_node,
@@ -130,23 +134,49 @@ def route_after_relevancy_check(state: AgentState) -> Literal["generate_answer",
     return "reform_query"
 
 
+def route_after_answer(state: AgentState) -> str:
+    """
+    Route after answer generation to determine if translation is needed.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        Next node name or "__end__" for END
+    """
+    response_language = state.get("response_language", "en")
+    
+    if response_language and response_language != "en":
+        logger.info(f"→ Translating response to {response_language}")
+        return "response_translation"
+    else:
+        logger.info("✓ Response in English - no translation needed")
+        return "__end__"
+
+
 def create_integrated_workflow() -> StateGraph:
     """
-    Create and compile the integrated workflow with Router + API + RAG.
+    Create and compile the integrated workflow with Multilingual + Router + API + RAG.
     
     Workflow structure:
+    0. Multilingual processing: language_detection → query_translation
     1. router → [api_call | retrieve | api_and_retrieve]
-    2. API-only path: api_call → api_answer → END
-    3. RAG-only path: retrieve → check_relevancy → [generate_answer | reform_query | fallback]
-    4. Hybrid path: api_and_retrieve → context_merger → check_relevancy → generate_answer
+    2. API-only path: api_call → api_answer → response_translation → END
+    3. RAG-only path: retrieve → check_relevancy → [generate_answer | reform_query | fallback] → response_translation → END
+    4. Hybrid path: api_and_retrieve → context_merger → check_relevancy → generate_answer → response_translation → END
     
     Returns:
         Compiled LangGraph workflow
     """
-    logger.info("Creating integrated workflow graph")
+    logger.info("Creating integrated multilingual workflow graph")
     
     # Initialize workflow
     workflow = StateGraph(AgentState)
+    
+    # Add language processing nodes (Phase 2 - Multilingual)
+    workflow.add_node("language_detection", language_detection_node)
+    workflow.add_node("query_translation", query_translation_node)
+    workflow.add_node("response_translation", response_translation_node)
     
     # Add all nodes
     # Routing and API nodes
@@ -163,8 +193,12 @@ def create_integrated_workflow() -> StateGraph:
     workflow.add_node("generate_answer", generate_answer_node)
     workflow.add_node("fallback", fallback_node)
     
-    # Set entry point
-    workflow.set_entry_point("router")
+    # Set entry point - start with language detection
+    workflow.set_entry_point("language_detection")
+    
+    # Language processing flow
+    workflow.add_edge("language_detection", "query_translation")
+    workflow.add_edge("query_translation", "router")
     
     # Add edges from router
     workflow.add_conditional_edges(
@@ -186,7 +220,14 @@ def create_integrated_workflow() -> StateGraph:
             "fallback": "fallback"
         }
     )
-    workflow.add_edge("api_answer", END)
+    workflow.add_conditional_edges(
+        "api_answer",
+        route_after_answer,
+        {
+            "response_translation": "response_translation",
+            "__end__": END
+        }
+    )
     
     # Hybrid path
     workflow.add_edge("api_and_retrieve", "context_merger")
@@ -204,14 +245,33 @@ def create_integrated_workflow() -> StateGraph:
         }
     )
     workflow.add_edge("reform_query", "retrieve")  # Retry loop
-    workflow.add_edge("generate_answer", END)
-    workflow.add_edge("fallback", END)
+    
+    # All answer/fallback nodes route to translation check
+    workflow.add_conditional_edges(
+        "generate_answer",
+        route_after_answer,
+        {
+            "response_translation": "response_translation",
+            "__end__": END
+        }
+    )
+    workflow.add_conditional_edges(
+        "fallback",
+        route_after_answer,
+        {
+            "response_translation": "response_translation",
+            "__end__": END
+        }
+    )
+    
+    # Response translation leads to END
+    workflow.add_edge("response_translation", END)
     
     # Compile with memory checkpointing
     memory = MemorySaver()
     compiled_workflow = workflow.compile(checkpointer=memory)
     
-    logger.info("✓ Integrated workflow compiled successfully")
+    logger.info("✓ Integrated multilingual workflow compiled successfully")
     
     return compiled_workflow
 
@@ -269,7 +329,8 @@ class IntegratedAgent:
         self,
         user_query: str,
         session_id: str = None,
-        chat_history: list[BaseMessage] = None
+        chat_history: list[BaseMessage] = None,
+        language: str = None
     ) -> dict:
         """
         Execute integrated workflow for a user query.
@@ -278,15 +339,18 @@ class IntegratedAgent:
             user_query: User's question
             session_id: Session identifier for memory (default: new UUID)
             chat_history: Previous conversation messages (optional)
+            language: Preferred language for response (en/hi/bn), auto-detected if None
             
         Returns:
-            Dictionary with answer, sources, routing info, and execution details
+            Dictionary with answer, sources, routing info, language metadata, and execution details
         """
         # Generate session ID if not provided
         if session_id is None:
             session_id = str(uuid4())
         
         logger.info(f"Processing query for session {session_id}: '{user_query}'")
+        if language:
+            logger.info(f"Preferred language: {language}")
         
         # Initialize state
         initial_state = AgentState(
@@ -306,7 +370,9 @@ class IntegratedAgent:
             messages=chat_history or [],
             sources_used=[],
             execution_path=[],
-            session_id=session_id
+            session_id=session_id,
+            # Phase 4 - Set response language if specified (skips detection if provided)
+            response_language=language if language else None
         )
         
         # Execute workflow
@@ -327,13 +393,18 @@ class IntegratedAgent:
                 "num_retrieved": len(final_state.get("retrieved_documents", [])),
                 "num_relevant": len(final_state.get("relevant_documents", [])),
                 "api_used": final_state.get("api_success", False),
-                "chat_history": final_state["messages"]
+                "chat_history": final_state["messages"],
+                # Phase 4 - Include language metadata
+                "query_language": final_state.get("query_language"),
+                "query_language_confidence": final_state.get("query_language_confidence"),
+                "response_language": final_state.get("response_language")
             }
             
             logger.info(
                 f"✓ Query completed - "
                 f"Route: {result['datasource']}, "
-                f"Path: {' → '.join(result['execution_path'])}, "
+                f"Lang: {result.get('query_language', 'unknown')}, "
+                f"Path: {' → '.join(result['execution_path'][:5])}{'...' if len(result['execution_path']) > 5 else ''}, "
                 f"API: {'Yes' if result['api_used'] else 'No'}"
             )
             

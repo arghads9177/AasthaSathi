@@ -28,6 +28,13 @@ class AgentState(TypedDict):
     user_query: str                              # Original user query
     reformulated_query: Optional[str]            # Query after reformulation
     
+    # Multilingual support
+    query_language: Optional[str]                # Detected language code (en, hi, bn)
+    query_language_confidence: Optional[float]   # Detection confidence (0.0-1.0)
+    original_query: Optional[str]                # Query in user's original language
+    translated_query: Optional[str]              # English translation (if needed)
+    response_language: Optional[str]             # Language for response (same as query)
+    
     # Routing information
     datasource: Optional[str]                    # "api", "rag", or "hybrid"
     routing_reasoning: Optional[str]             # Why this route was chosen

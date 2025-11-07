@@ -25,9 +25,36 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="AasthaSathi Banking Assistant API",
     description="""
-    AI-powered banking assistant with intelligent routing (API + RAG + Hybrid).
+    AI-powered banking assistant with intelligent routing (API + RAG + Hybrid) and **multilingual support**.
     
-    ## Authentication
+    ## 🌐 Multilingual Support (Phase 4)
+    
+    The API now supports **English**, **Hindi (हिंदी)**, and **Bengali (বাংলা)**:
+    
+    - **Auto-Detection**: Language automatically detected from query
+    - **Manual Selection**: Specify preferred language with `language` parameter
+    - **Response Translation**: Answers provided in detected/preferred language
+    - **Confidence Score**: Detection confidence included in response
+    
+    ### Example (Hindi Query):
+    ```json
+    {
+        "query": "कौन सी बचत योजनाएं उपलब्ध हैं?",
+        "language": "hi"
+    }
+    ```
+    
+    ### Response includes:
+    ```json
+    {
+        "answer": "हमारे पास...",
+        "detected_language": "hi",
+        "detection_confidence": 1.0,
+        "response_language": "hi"
+    }
+    ```
+    
+    ## 🔐 Authentication
     
     This API uses **HTTP Basic Authentication**. Include credentials in the Authorization header:
     
@@ -37,13 +64,13 @@ app = FastAPI(
     
     Most HTTP clients handle this automatically when you provide username and password.
     
-    ## Endpoints
+    ## 📍 Endpoints
     
     - **POST /api/v1/query** - Process banking queries (requires auth)
     - **GET /api/v1/health** - Health check (public)
     - **GET /** - API information (public)
     
-    ## Security Note
+    ## 🔒 Security Note
     
     ⚠️ Always use HTTPS in production to encrypt credentials during transmission.
     """,
@@ -107,10 +134,27 @@ async def query(request: QueryRequest, username: str = Depends(get_current_user)
     This endpoint accepts a natural language query and returns an AI-generated
     answer using intelligent routing (API, RAG, or Hybrid).
     
-    **Example:**
+    **Multilingual Support**: (Phase 4)
+    - Supports English (en), Hindi (hi), and Bengali (bn)
+    - Language auto-detected from query if not specified
+    - Response translated to detected/preferred language
+    
+    **Example (English):**
     ```json
     {
         "query": "What savings schemes are available?",
+        "language": "en",
+        "session_id": null,
+        "include_sources": true,
+        "include_metadata": true
+    }
+    ```
+    
+    **Example (Hindi):**
+    ```json
+    {
+        "query": "कौन सी बचत योजनाएं उपलब्ध हैं?",
+        "language": "hi",
         "session_id": null,
         "include_sources": true,
         "include_metadata": true
@@ -118,22 +162,26 @@ async def query(request: QueryRequest, username: str = Depends(get_current_user)
     ```
     
     **Response includes:**
-    - AI-generated answer
+    - AI-generated answer (in requested/detected language)
     - Data source used (api/rag/hybrid)
+    - Language detection info (detected_language, confidence)
     - Source attribution
     - Execution metadata (timing, path, etc.)
     """
     try:
         logger.info(f"[User: {username}] Received query: '{request.query[:50]}...'")
+        if request.language:
+            logger.info(f"[User: {username}] Preferred language: {request.language}")
         
         # Get agent service
         agent_service = get_agent_service()
         
-        # Process query
+        # Process query with language parameter
         result = await agent_service.process_query(
             query=request.query,
             session_id=request.session_id,
             chat_history=None,  # Will add session support later
+            language=request.language,  # Phase 4 - Pass language preference
             include_sources=request.include_sources,
             include_metadata=request.include_metadata
         )
@@ -145,6 +193,9 @@ async def query(request: QueryRequest, username: str = Depends(get_current_user)
             answer=result["answer"],
             datasource=result["datasource"],
             routing_reasoning=result.get("routing_reasoning"),
+            detected_language=result.get("detected_language"),  # Phase 4
+            detection_confidence=result.get("detection_confidence"),  # Phase 4
+            response_language=result.get("response_language"),  # Phase 4
             sources=result.get("sources", []),
             metadata=result.get("metadata"),
             timestamp=datetime.now()

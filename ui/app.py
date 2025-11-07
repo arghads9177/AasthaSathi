@@ -34,6 +34,13 @@ from components.chat import (
     render_chat_stats,
     render_typing_indicator
 )
+from components.multilingual import (
+    render_language_selector,
+    render_language_detection_indicator,
+    render_multilingual_examples,
+    get_text,
+    get_language_name
+)
 
 # Configure page - MUST be first Streamlit command
 st.set_page_config(
@@ -78,6 +85,16 @@ def initialize_session_state():
     
     if "query_type" not in st.session_state:
         st.session_state.query_type = "Auto"  # Auto, API, RAG, Hybrid
+    
+    # Multilingual settings (Phase 3)
+    if "preferred_language" not in st.session_state:
+        st.session_state.preferred_language = "en"  # Default to English
+    
+    if "last_detected_language" not in st.session_state:
+        st.session_state.last_detected_language = None
+    
+    if "last_detection_confidence" not in st.session_state:
+        st.session_state.last_detection_confidence = None
     
     # Connection status
     if "api_connected" not in st.session_state:
@@ -146,6 +163,18 @@ def render_sidebar():
             
             st.markdown("---")
             
+            # Language Settings (Phase 3 - Multilingual)
+            st.markdown(f"### {get_text('language_selector', st.session_state.preferred_language)}")
+            new_language = render_language_selector(st.session_state.preferred_language)
+            
+            # Update language preference if changed
+            if new_language != st.session_state.preferred_language:
+                st.session_state.preferred_language = new_language
+                st.success(f"Language changed to {get_language_name(new_language, new_language)}")
+                st.rerun()
+            
+            st.markdown("---")
+            
             # Query Settings
             st.markdown("### ⚙️ Query Settings")
             
@@ -166,6 +195,15 @@ def render_sidebar():
                 value=st.session_state.show_metadata,
                 help="Display routing and execution metadata"
             )
+            
+            st.markdown("---")
+            
+            # Multilingual Example Queries (Phase 3)
+            selected_example = render_multilingual_examples(st.session_state.preferred_language)
+            if selected_example:
+                # Store selected example in session state for the chat input
+                st.session_state.example_query = selected_example
+                st.rerun()
             
             st.markdown("---")
             
@@ -284,10 +322,11 @@ def render_chat_interface():
             # Determine query type
             query_type = None if st.session_state.query_type == "Auto" else st.session_state.query_type.lower()
             
-            # Query the API
+            # Query the API with language preference
             success, response, error = st.session_state.api_client.query(
                 question=prompt,
                 query_type=query_type,
+                language=st.session_state.preferred_language,  # Phase 3 - Multilingual
                 metadata={
                     "user_id": st.session_state.user_info["userid"],
                     "timestamp": datetime.now().isoformat()
@@ -299,6 +338,11 @@ def render_chat_interface():
                 answer = response.get("answer", "No answer available")
                 sources = response.get("sources", [])
                 metadata = response.get("metadata", {})
+                
+                # Store language detection info (Phase 3 - Multilingual)
+                if "detected_language" in metadata:
+                    st.session_state.last_detected_language = metadata["detected_language"]
+                    st.session_state.last_detection_confidence = metadata.get("detection_confidence", 0.0)
                 
                 # Add assistant message to chat
                 st.session_state.messages.append({
@@ -331,12 +375,26 @@ def render_chat_interface():
             show_metadata=st.session_state.show_metadata,
             enable_feedback=True
         )
+        
+        # Show language detection indicator if available (Phase 3 - Multilingual)
+        if (st.session_state.last_detected_language and 
+            st.session_state.last_detection_confidence and
+            len(st.session_state.messages) > 0):
+            render_language_detection_indicator(
+                detected_language=st.session_state.last_detected_language,
+                confidence=st.session_state.last_detection_confidence,
+                user_language=st.session_state.preferred_language
+            )
     
     # Chat input with examples
+    # Check if an example query was selected (Phase 3 - Multilingual)
+    input_value = st.session_state.pop("example_query", None)
+    
     prompt = render_chat_input(
         placeholder="Ask me anything about banking operations...",
         disabled=st.session_state.get("processing_response", False),
-        examples=example_queries if len(st.session_state.messages) == 0 else None
+        examples=example_queries if len(st.session_state.messages) == 0 else None,
+        value=input_value
     )
     
     # Process user input

@@ -214,7 +214,9 @@ class AasthaSathiAPIClient:
         self,
         question: str,
         query_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        language: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """
         Submit a query to AasthaSathi API.
@@ -236,6 +238,14 @@ class AasthaSathiAPIClient:
                 "include_sources": True,
                 "include_metadata": True
             }
+
+            # Optional language preference (en/hi/bn)
+            if language:
+                payload["language"] = language
+
+            # Optional session id for continuity
+            if session_id:
+                payload["session_id"] = session_id
             
             # Note: query_type and metadata are not part of the API schema
             # The API will auto-detect the query type based on content

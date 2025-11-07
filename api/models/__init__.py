@@ -1,7 +1,7 @@
 """Pydantic models for API requests and responses."""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 
 
@@ -19,6 +19,11 @@ class QueryRequest(BaseModel):
         None,
         description="Session ID for conversation continuity (optional)",
         example="550e8400-e29b-41d4-a716-446655440000"
+    )
+    language: Optional[Literal["en", "hi", "bn"]] = Field(
+        None,
+        description="Preferred language for response (en=English, hi=Hindi, bn=Bengali). If not specified, language will be auto-detected from query.",
+        example="en"
     )
     include_sources: bool = Field(
         True,
@@ -53,6 +58,20 @@ class QueryResponse(BaseModel):
         None,
         description="Explanation of routing decision"
     )
+    detected_language: Optional[str] = Field(
+        None,
+        description="Auto-detected language from query (en/hi/bn)"
+    )
+    detection_confidence: Optional[float] = Field(
+        None,
+        description="Language detection confidence score (0.0-1.0)",
+        ge=0.0,
+        le=1.0
+    )
+    response_language: Optional[str] = Field(
+        None,
+        description="Language used for the response (en/hi/bn)"
+    )
     sources: List[str] = Field(
         default_factory=list,
         description="List of sources used to generate answer"
@@ -70,18 +89,23 @@ class QueryResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "session_id": "550e8400-e29b-41d4-a716-446655440000",
-                "query": "What savings schemes are available?",
-                "answer": "We offer a Savings Account scheme with 4% interest rate...",
-                "datasource": "api",
-                "routing_reasoning": "Query asks for current schemes, requires real-time data",
-                "sources": ["API Data"],
+                "query": "ब्याज दर क्या है?",
+                "answer": "ब्याज दर 5% प्रति वर्ष है।",
+                "datasource": "rag",
+                "routing_reasoning": "Query asks about interest rates, knowledge base query",
+                "detected_language": "hi",
+                "detection_confidence": 1.0,
+                "response_language": "hi",
+                "sources": ["User Manual - Section 3.2"],
                 "metadata": {
-                    "execution_path": ["router", "api_call", "api_answer"],
-                    "processing_time_ms": 2341,
+                    "execution_path": ["language_detection", "query_translation", "router", "retrieve", "check_relevancy", "generate_answer", "response_translation"],
+                    "processing_time_ms": 3245,
                     "retry_count": 0,
-                    "api_used": True
+                    "api_used": False,
+                    "documents_retrieved": 5,
+                    "relevant_documents": 3
                 },
-                "timestamp": "2025-10-31T10:30:00Z"
+                "timestamp": "2025-11-06T10:30:00Z"
             }
         }
 

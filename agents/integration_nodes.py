@@ -1,7 +1,8 @@
 """
 Integration nodes for combining API and RAG workflows.
 
-This module contains nodes for routing queries and merging contexts.
+This module contains nodes for routing queries and merging contexts,
+including multilingual support nodes.
 """
 
 import logging
@@ -10,13 +11,170 @@ from typing import Dict, Any
 from agents.models import AgentState
 from agents.router import QueryRouter
 from agents.api_agent import APIAgent
+from core.language_detector import LanguageDetector
+from core.translation_service import TranslationService
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# MULTILINGUAL NODES
+# ============================================================================
+
+def language_detection_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Detect the language of user query and update state.
+    
+    Args:
+        state: Current agent state with query
+        
+    Returns:
+        Updated state with language information
+    """
+    query = state["user_query"]
+    logger.info(f"Detecting language for query: {query[:50]}...")
+    
+    try:
+        detector = LanguageDetector()
+        lang_code, confidence = detector.detect_language(query)
+        lang_name = detector.get_language_name(lang_code)
+        
+        logger.info(
+            f"Language detected: {lang_name} ({lang_code}) "
+            f"with confidence {confidence:.2f}"
+        )
+        
+        return {
+            "query_language": lang_code,
+            "query_language_confidence": confidence,
+            "original_query": query,
+            "response_language": lang_code,
+            "execution_path": state.get("execution_path", []) + ["language_detection"]
+        }
+    except Exception as e:
+        logger.error(f"Error in language detection: {e}, defaulting to English")
+        return {
+            "query_language": "en",
+            "query_language_confidence": 0.0,
+            "original_query": query,
+            "response_language": "en",
+            "execution_path": state.get("execution_path", []) + ["language_detection_error"]
+        }
+
+
+def query_translation_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Translate non-English queries to English for processing.
+    
+    Args:
+        state: Current agent state
+        
+    Returns:
+        Updated state with translated query
+    """
+    lang = state.get("query_language", "en")
+    original_query = state.get("original_query", state["user_query"])
+    
+    logger.info(f"Processing query translation for language: {lang}")
+    
+    # Skip translation if already English
+    if lang == "en":
+        logger.info("Query is in English, skipping translation")
+        return {
+            "original_query": original_query,
+            "translated_query": original_query,  # For English, translated = original
+            "user_query": original_query,  # Ensure user_query is set for consistency
+            "execution_path": state.get("execution_path", []) + ["query_translation_skipped"]
+        }
+    
+    try:
+        # Translate to English for router and retrieval
+        translator = TranslationService(enable_cache=True)
+        translated = translator.translate_to_english(original_query, lang)
+        
+        if translated:
+            logger.info(f"Query translated: '{original_query[:50]}...' → '{translated[:50]}...'")
+            
+            # Update user_query for processing (rest of pipeline uses this)
+            return {
+                "translated_query": translated,
+                "user_query": translated,  # Use translated query for processing
+                "execution_path": state.get("execution_path", []) + ["query_translation"]
+            }
+        else:
+            logger.warning("Translation failed, using original query")
+            return {
+                "translated_query": None,
+                "execution_path": state.get("execution_path", []) + ["query_translation_failed"]
+            }
+    except Exception as e:
+        logger.error(f"Error in query translation: {e}")
+        return {
+            "translated_query": None,
+            "execution_path": state.get("execution_path", []) + ["query_translation_error"]
+        }
+
+
+def response_translation_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Translate English responses back to user's language.
+    
+    Args:
+        state: Current agent state with answer
+        
+    Returns:
+        Updated state with translated answer
+    """
+    response_lang = state.get("response_language", "en")
+    answer = state.get("final_answer", "")
+    
+    logger.info(f"Processing response translation to: {response_lang}")
+    
+    # Skip translation if already English
+    if response_lang == "en":
+        logger.info("Response is already in English, skipping translation")
+        return {
+            "execution_path": state.get("execution_path", []) + ["response_translation_skipped"]
+        }
+    
+    if not answer:
+        logger.warning("No answer to translate")
+        return {
+            "execution_path": state.get("execution_path", []) + ["response_translation_no_answer"]
+        }
+    
+    try:
+        # Translate answer to target language
+        translator = TranslationService(enable_cache=True)
+        translated_answer = translator.translate_from_english(answer, response_lang)
+        
+        if translated_answer:
+            logger.info(f"Answer translated to {response_lang}: '{translated_answer[:50]}...'")
+            return {
+                "final_answer": translated_answer,
+                "execution_path": state.get("execution_path", []) + ["response_translation"]
+            }
+        else:
+            logger.warning("Translation failed, keeping English answer")
+            return {
+                "execution_path": state.get("execution_path", []) + ["response_translation_failed"]
+            }
+    except Exception as e:
+        logger.error(f"Error in response translation: {e}")
+        return {
+            "execution_path": state.get("execution_path", []) + ["response_translation_error"]
+        }
+
+
+# ============================================================================
+# ROUTING AND CONTEXT NODES
+# ============================================================================
 
 
 def router_node(state: AgentState) -> Dict[str, Any]:
     """
     Route the query to appropriate datasource(s).
+    Uses language-aware prompts based on detected language.
     
     Args:
         state: Current agent state
@@ -25,11 +183,28 @@ def router_node(state: AgentState) -> Dict[str, Any]:
         Updated state with routing information
     """
     query = state["user_query"]
-    logger.info(f"Routing query: {query}")
+    lang = state.get("query_language", "en")
+    
+    logger.info(f"Routing query (language: {lang}): {query}")
     
     try:
-        # Use router to classify query
+        # Import multilingual prompts
+        from agents.prompts_multilingual import get_prompt
+        
+        # Get language-specific router prompt
+        router_prompt = get_prompt("router_system", lang)
+        
+        # Use router to classify query (with custom prompt if needed)
         router = QueryRouter()
+        
+        # Override the system prompt if not English
+        if lang != "en" and router_prompt:
+            from langchain_core.prompts import ChatPromptTemplate
+            router.prompt = ChatPromptTemplate.from_messages([
+                ("system", router_prompt),
+                ("human", "Query: {query}")
+            ])
+        
         route_result = router.route(query)
         
         logger.info(f"Route decision: {route_result.datasource} - {route_result.reasoning}")

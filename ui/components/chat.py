@@ -185,7 +185,8 @@ def render_chat_history(
 def render_chat_input(
     placeholder: str = "Type your message...",
     disabled: bool = False,
-    examples: Optional[List[str]] = None
+    examples: Optional[List[str]] = None,
+    value: Optional[str] = None,
 ) -> Optional[str]:
     """
     Render chat input with optional example prompts.
@@ -198,11 +199,15 @@ def render_chat_input(
     Returns:
         User input text or None
     """
+    # If a value is provided (for example: selected example query), return it immediately
+    if value:
+        return value
+
     # Show example prompts if provided
     if examples and not st.session_state.messages:
         st.markdown("### 💡 Try asking:")
         cols = st.columns(min(len(examples), 3))
-        
+
         for idx, example in enumerate(examples[:6]):  # Limit to 6 examples
             col_idx = idx % 3
             with cols[col_idx]:
@@ -213,7 +218,7 @@ def render_chat_input(
                     disabled=disabled
                 ):
                     return example
-    
+
     # Main chat input
     return st.chat_input(placeholder, disabled=disabled)
 

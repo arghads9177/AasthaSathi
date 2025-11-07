@@ -3,12 +3,15 @@ Translation Service Module for Multilingual Support
 
 Provides translation capabilities for converting text between
 English, Hindi, and Bengali languages.
+
+Uses deep-translator library which provides stable Google Translate
+integration without httpcore dependency conflicts.
 """
 
 import logging
 from typing import List, Optional, Dict
-from googletrans import Translator
 import time
+from deep_translator import GoogleTranslator
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,7 @@ class TranslationService:
     """
     Translation service for multilingual text conversion.
     
-    Uses Google Translate API for high-quality translations
+    Uses deep-translator's GoogleTranslator for high-quality translations
     between English, Hindi, and Bengali.
     """
     
@@ -39,7 +42,6 @@ class TranslationService:
             enable_cache: Enable translation caching (from translation_cache module)
             retry_attempts: Number of retry attempts for failed translations
         """
-        self.translator = Translator()
         self.enable_cache = enable_cache
         self.retry_attempts = retry_attempts
         
@@ -48,14 +50,14 @@ class TranslationService:
             try:
                 from core.translation_cache import TranslationCache
                 self.cache = TranslationCache()
-                logger.info("TranslationService initialized with caching enabled")
+                logger.info("TranslationService initialized with caching enabled (deep-translator)")
             except ImportError:
                 logger.warning("TranslationCache not available, caching disabled")
                 self.cache = None
                 self.enable_cache = False
         else:
             self.cache = None
-            logger.info("TranslationService initialized without caching")
+            logger.info("TranslationService initialized without caching (deep-translator)")
     
     def translate(
         self, 
@@ -116,13 +118,14 @@ class TranslationService:
                     f"{LANGUAGE_NAMES[target_lang]} (attempt {attempt}/{self.retry_attempts})"
                 )
                 
-                result = self.translator.translate(
-                    text,
-                    src=source_lang,
-                    dest=target_lang
-                )
+                # Create translator instance for this translation
+                # deep-translator uses different API: GoogleTranslator(source, target)
+                translator = GoogleTranslator(source=source_lang, target=target_lang)
+                translated_text = translator.translate(text)
                 
-                translated_text = result.text
+                # Validate translation result
+                if not translated_text:
+                    raise ValueError("Translation returned empty result")
                 
                 # Cache the result
                 if self.enable_cache and self.cache:
@@ -141,6 +144,7 @@ class TranslationService:
                     time.sleep(wait_time)
                 else:
                     logger.error(f"Translation failed after {self.retry_attempts} attempts")
+                    logger.warning(f"Returning None - translation unavailable for: '{text[:50]}...'")
                     return None
         
         return None
