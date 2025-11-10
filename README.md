@@ -2,9 +2,9 @@
 
 ![AasthaSathi Banner](http://myaastha.in/wp-content/uploads/2021/06/slider1.jpg)
 
-> **AasthaSathi** is an AI-powered assistant developed for **Aastha Co-operative Credit Society**, designed to help employees and agents instantly access scheme information, policy guidelines, and live member account data — all through natural language queries.
+> **AasthaSathi** is an AI-powered multilingual(English/Bengali/Hindi) assistant developed for **Aastha Co-operative Credit Society**, designed to help employees and agents instantly access scheme information, policy guidelines, and live member account data — all through natural language queries.
 
-AasthaSathi combines **Retrieval-Augmented Generation (RAG)** and **Model Context Protocol (MCP)** to bridge the gap between static documentation and dynamic operational data.  
+AasthaSathi combines **Retrieval-Augmented Generation (RAG)** and **Tools(REST API calls)** to bridge the gap between static documentation and dynamic operational data.  
 It represents the next generation of **Agentic AI systems for financial cooperatives**, where trust and intelligence go hand in hand.
 
 ---
@@ -14,7 +14,7 @@ It represents the next generation of **Agentic AI systems for financial cooperat
 | Feature | Description |
 |----------|--------------|
 | 🧠 **RAG-Powered Knowledge Retrieval** | Answers queries using data from the Aastha website, policy PDFs, and internal manuals. |
-| ⚙️ **Live Data Access via REST API (MCP)** | Fetches up-to-date account and membership details securely. |
+| ⚙️ **Live Data Access via REST API** | Fetches up-to-date account and membership details securely. |
 | 🔒 **Role-Based Access Control** | Employees, agents, and administrators receive context-appropriate responses. |
 | 🗂️ **Cited & Verified Responses** | Each answer includes the source of truth — page, section, or API endpoint. |
 | 🗣️ **Natural Conversational Interface** | Supports question-answer and follow-up conversations. |
@@ -49,7 +49,7 @@ AasthaSathi:
 | **Vector Store** | ChromaDB |
 | **Embeddings** | OpenAI / Gemini Embeddings |
 | **LLM Reasoning** | Gemini Pro / GPT-4 |
-| **API Tools (MCP)** | FastAPI wrapper for REST endpoints |
+| **API Tools** | FastAPI wrapper for REST endpoints |
 | **Frontend (Demo)** | Gradio / Streamlit |
 | **Auth & Security** | JWT, Role-based Access, HTTPS |
 | **Deployment** | Docker, DigitalOcean |
